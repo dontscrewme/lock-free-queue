@@ -49,7 +49,7 @@ void *producer_thread(void *arg)
         }
     }
 
-    cleanup_thread();
+    LFQueue_cleanup_thread();
 
     return NULL;
 }
@@ -84,7 +84,7 @@ void *consumer_thread(void *arg)
         }
     }
 
-    cleanup_thread();
+    LFQueue_cleanup_thread();
 
     return NULL;
 }
