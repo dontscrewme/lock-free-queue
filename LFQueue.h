@@ -51,7 +51,7 @@ void LFQueue_set_error_callback(int (*errback)(const char *, ...));
 
 int LFQueue_init(struct LFQueue* me, queue_attr_t* attr);
 int LFQueue_destroy(struct LFQueue* me);
-void cleanup_thread(void);
+void LFQueue_cleanup_thread(void);
 
 lfq_err_t enqueueLF(struct LFQueue* me, int data);
 lfq_err_t dequeueLF(struct LFQueue* me, int* output);
