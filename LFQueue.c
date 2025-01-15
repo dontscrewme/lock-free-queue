@@ -217,7 +217,7 @@ static inline hp_record_t *getThreadHPRecord(void)
     return g_threadHPRecord;
 }
 
-void cleanup_thread(void)
+void LFQueue_cleanup_thread(void)
 {
     hp_record_t *myhprec = getThreadHPRecord();
     if (!myhprec)
