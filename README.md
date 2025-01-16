@@ -8,3 +8,4 @@ Note:
 to-do list:
 1. Remove retired_next from the struct node. (is it possible?)
 2. Implement PrepareForReuse().
+3. use of size_t is preferred
