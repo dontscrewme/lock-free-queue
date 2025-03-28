@@ -4,6 +4,7 @@ Based on Hazard Pointers, implemented in C according to [Maged M. Michael's pape
 Note:
 1. You can implement a bounded queue by using queue_attr_t.
 2. Tested by Cppcheck, Valgrind, and ThreadSanitizer roughly
+3. ./wrapper_test.sh "./main 1000 10 0" 10: run "./main 1000 10 0" 10 times 
 
 to-do list:
 1. Remove retired_next from the struct node. (is it possible?)
