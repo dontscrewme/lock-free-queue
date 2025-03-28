@@ -494,6 +494,8 @@ int LFQueue_destroy(struct LFQueue *me)
         curr = next;
     }
 
+    me->head = me->tail = NULL;
+
     HPRecord_freeAll();
 
     return 0;
