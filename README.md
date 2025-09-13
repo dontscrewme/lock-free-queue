@@ -13,7 +13,7 @@ to-do list:
 
 
 
-=== COMPARE RESULT
+### COMPARE RESULT
 
 RUNNING TEST: 100000 items to enqueue/dequeue, iteration 1 times:
 Integrated concurrency test with 100 producer(s)/100 consumer(s), 100000 items to enqueue/dequeue: SUCCESS
