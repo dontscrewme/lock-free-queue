@@ -32,7 +32,7 @@ sys	0m0.260s
 
 - Performance Winner: In the high-contention test case (100 producers/100 consumers), the Lock-Free Queue is the clear performance winner, outperforming the Lock-Based Queue by approximately 44%.
 
-- Execution Time: The Lock-Free Queue completed the test in 50 milliseconds, while the final, corrected Lock-Based Queue took 72 milliseconds.
+- Execution Time: The Lock-Free Queue completed the test in 50 milliseconds, while the Lock-Based Queue took 72 milliseconds.
 
 - System Call Overhead: The Lock-Based Queue exhibited significantly higher system time (sys: 0.260s) compared to its real execution time. This indicates that substantial overhead was incurred from OS-level operations like thread scheduling and context switching due to intense lock contention.
 
