@@ -18,7 +18,10 @@ typedef struct
 {
     sync_primitives_t sync;
     struct LFQueue queue;
-    unsigned long total_items;
+    atomic_int item_serial_number;
+    int total_items;
+    bool* enqueue_result;
+    bool* dequeue_result;
 } thread_args_t;
 
 void *producer_thread(void *arg)
@@ -32,18 +35,28 @@ void *producer_thread(void *arg)
     }
     pthread_mutex_unlock(&(args->sync.lock));
 
-    int value = 1;
     while (1)
     {
-        unsigned long old_count = atomic_fetch_add(&(args->sync.total_items_produced), 1);
+        int old_count = atomic_fetch_add(&(args->sync.total_items_produced), 1);
         if (old_count >= args->total_items)
         {
             atomic_fetch_sub(&(args->sync.total_items_produced), 1);
             break;
         }
 
-        lfq_err_t ret = enqueueLF(&(args->queue), value);
-        if (ret != LFQ_OK)
+        int serial = atomic_fetch_add(&(args->item_serial_number), 1);
+        lfq_err_t ret = enqueueLF(&(args->queue), serial);
+        if (ret == LFQ_OK)
+        {
+            if (serial >= args->total_items)
+            {
+                printf("FAILED\n");
+                printf("data integrity failed when enqueue at srial: %d\n", serial);
+                exit(EXIT_FAILURE);
+            }
+            args->enqueue_result[serial] = true;
+        }
+        else
         {
             atomic_fetch_sub(&(args->sync.total_items_produced), 1);
         }
@@ -65,18 +78,24 @@ void *consumer_thread(void *arg)
     }
     pthread_mutex_unlock(&(args->sync.lock));
 
-    int value = 0;
+    int serial = 0;
     while (1)
     {
-        lfq_err_t ret = dequeueLF(&(args->queue), &value);
-
+        lfq_err_t ret = dequeueLF(&(args->queue), &serial);
         if (ret == LFQ_OK)
         {
+            if (serial >= args->total_items)
+            {
+                printf("FAILED\n");
+                printf("data integrity failed when dequeue at srial: %d\n", serial);
+                exit(EXIT_FAILURE);
+            }
             atomic_fetch_add(&(args->sync.total_items_consumed), 1);
+            args->dequeue_result[serial] = true;
         }
         else
         {
-            unsigned long consumed_count = atomic_load(&(args->sync.total_items_consumed));
+            int consumed_count = atomic_load(&(args->sync.total_items_consumed));
             if (consumed_count >= args->total_items)
             {
                 break;
@@ -93,6 +112,13 @@ int isolated_enqueue_test(unsigned num_producers, unsigned long total_items)
 {
     printf("Isolated enqueue concurrency test with %d producer(s), %lu items to enqueue: ", num_producers, total_items);
 
+    bool enqueue_buf[total_items];
+    bool dequeue_buf[total_items];
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        enqueue_buf[i] = false;
+        dequeue_buf[i] = false;
+    }
     thread_args_t args = {
         .sync = {
             .lock = PTHREAD_MUTEX_INITIALIZER,
@@ -100,7 +126,10 @@ int isolated_enqueue_test(unsigned num_producers, unsigned long total_items)
             .total_items_produced = ATOMIC_VAR_INIT(0),
             .start_flag = 0},
         .queue = {0},
+        .item_serial_number = ATOMIC_VAR_INIT(0),
         .total_items = total_items,
+        .enqueue_result = &enqueue_buf[0],
+        .dequeue_result = &dequeue_buf[0],
     };
 
     LFQueue_init(&args.queue, NULL);
@@ -108,8 +137,7 @@ int isolated_enqueue_test(unsigned num_producers, unsigned long total_items)
     pthread_t producer_threads[num_producers];
     for (unsigned i = 0; i < num_producers; i++)
     {
-        if (pthread_create(&producer_threads[i], NULL, producer_thread, &args) !=
-            0)
+        if (pthread_create(&producer_threads[i], NULL, producer_thread, &args) != 0)
         {
             fprintf(stderr, "Failed to create producer thread %d.\n", i);
             exit(EXIT_FAILURE);
@@ -141,6 +169,17 @@ int isolated_enqueue_test(unsigned num_producers, unsigned long total_items)
         return -1;
     }
 
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        if (enqueue_buf[i] == false)
+        {
+            printf("FAILED\n");
+            printf("data integrity failed at enqueue_buf[%lu]\n", i);
+            exit(EXIT_FAILURE);
+            return -1;
+        }
+    }
+
     printf("SUCCESS\n");
 
     return 0;
@@ -150,14 +189,24 @@ int isolated_dequeue_test(unsigned num_consumers, unsigned long total_items)
 {
     printf("Isolated dequeue concurrency test with %d consumer(s), %lu items to dequeue: ", num_consumers, total_items);
 
+    bool enqueue_buf[total_items];
+    bool dequeue_buf[total_items];
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        enqueue_buf[i] = false;
+        dequeue_buf[i] = false;
+    }
     thread_args_t args = {
-        .sync = {.lock = PTHREAD_MUTEX_INITIALIZER,
-                 .start_cond = PTHREAD_COND_INITIALIZER,
-                 .start_flag = 0,
-                 .total_items_produced = ATOMIC_VAR_INIT(0),
-                 .total_items_consumed = ATOMIC_VAR_INIT(0)},
+        .sync = {
+            .lock = PTHREAD_MUTEX_INITIALIZER,
+            .start_cond = PTHREAD_COND_INITIALIZER,
+            .total_items_produced = ATOMIC_VAR_INIT(0),
+            .start_flag = 0},
         .queue = {0},
+        .item_serial_number = ATOMIC_VAR_INIT(0),
         .total_items = total_items,
+        .enqueue_result = &enqueue_buf[0],
+        .dequeue_result = &dequeue_buf[0],
     };
 
     LFQueue_init(&args.queue, NULL);
@@ -228,6 +277,17 @@ int isolated_dequeue_test(unsigned num_consumers, unsigned long total_items)
         return -1;
     }
 
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        if (dequeue_buf[i] == false)
+        {
+            printf("FAILED\n");
+            printf("data integrity failed at dequeue_buf[%lu]\n", i);
+            exit(EXIT_FAILURE);
+            return -1;
+        }
+    }
+
     printf("SUCCESS\n");
 
     return 0;
@@ -238,14 +298,24 @@ int integrated_test(unsigned num_producers, unsigned num_consumers, unsigned lon
     printf("Integrated concurrency test with %d producer(s)/%d consumer(s), %lu items to enqueue/dequeue: ",
            num_producers, num_consumers, total_items);
 
+    bool enqueue_buf[total_items];
+    bool dequeue_buf[total_items];
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        enqueue_buf[i] = false;
+        dequeue_buf[i] = false;
+    }
     thread_args_t args = {
-        .sync = {.lock = PTHREAD_MUTEX_INITIALIZER,
-                 .start_cond = PTHREAD_COND_INITIALIZER,
-                 .start_flag = 0,
-                 .total_items_produced = ATOMIC_VAR_INIT(0),
-                 .total_items_consumed = ATOMIC_VAR_INIT(0)},
+        .sync = {
+            .lock = PTHREAD_MUTEX_INITIALIZER,
+            .start_cond = PTHREAD_COND_INITIALIZER,
+            .total_items_produced = ATOMIC_VAR_INIT(0),
+            .start_flag = 0},
         .queue = {0},
+        .item_serial_number = ATOMIC_VAR_INIT(0),
         .total_items = total_items,
+        .enqueue_result = &enqueue_buf[0],
+        .dequeue_result = &dequeue_buf[0],
     };
 
     LFQueue_init(&args.queue, NULL);
@@ -312,6 +382,28 @@ int integrated_test(unsigned num_producers, unsigned num_consumers, unsigned lon
                expected_consumed, actual_consumed);
         exit(EXIT_FAILURE);
         return -1;
+    }
+
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        if (enqueue_buf[i] == false)
+        {
+            printf("FAILED\n");
+            printf("data integrity failed at enqueue_buf[%lu]\n", i);
+            exit(EXIT_FAILURE);
+            return -1;
+        }
+    }
+
+    for (unsigned long i=0; i<total_items; i++)
+    {
+        if (dequeue_buf[i] == false)
+        {
+            printf("FAILED\n");
+            printf("data integrity failed at dequeue_buf[%lu]\n", i);
+            exit(EXIT_FAILURE);
+            return -1;
+        }
     }
 
     printf("SUCCESS\n");
