@@ -615,7 +615,7 @@ lfq_err_t dequeueLF(struct LFQueue *me, int *output)
         }
     }
 
-    *output = h->data;
+    *output = next->data;
     retireNode(myhprec, h);
 
     return LFQ_OK;
